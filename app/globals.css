@@ -1,26 +1,143 @@
 @import "tailwindcss";
 
+/*
+  Aesthetic: university registrar letterpress. Warm paper stock, heraldic
+  Hopkins blue, ledger rules. Deliberately a single light theme -- this is
+  meant to read as a printed bulletin, and a dark variant would undo that.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f2eee4;
+  --card: #fbf9f4;
+  --ink: #16130f;
+  --ink-soft: #554d42;
+  --ink-faint: #8a8072;
+  --rule: #d6cdbb;
+
+  --blue: #002d72;
+  --blue-soft: #1d4b91;
+  --gold: #9a6b12;
+  --crimson: #8f2b2b;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-blue: var(--blue);
+  --color-gold: var(--gold);
+  --color-crimson: var(--crimson);
+  --font-display: var(--font-fraunces);
+  --font-body: var(--font-archivo);
+  --font-mono: var(--font-plex-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--paper);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--paper);
+  /* Faint ledger ruling plus warm corner washes, so the page is never flat. */
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 31px,
+      rgba(0, 45, 114, 0.04) 31px 32px
+    ),
+    radial-gradient(circle at 12% 6%, rgba(154, 107, 18, 0.08), transparent 42%),
+    radial-gradient(circle at 90% 0%, rgba(0, 45, 114, 0.08), transparent 38%);
+  color: var(--ink);
+  font-family: var(--font-body), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grain overlay -- gives the paper tooth without affecting layout. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.45'/%3E%3C/svg%3E");
+}
+
+.display {
+  font-family: var(--font-display), Georgia, serif;
+  font-variation-settings: "SOFT" 24, "WONK" 1;
+  letter-spacing: -0.025em;
+}
+
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* Small-caps label used for every section heading and field name. */
+.label {
+  font-family: var(--font-mono), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.66rem;
+  color: var(--ink-faint);
+}
+
+.rule-double {
+  border-top: 3px double var(--blue);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 14px 30px -22px rgba(22, 19, 15, 0.55);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes sweep {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.working {
+  background: linear-gradient(
+    90deg,
+    var(--ink-faint) 0%,
+    var(--blue) 40%,
+    var(--gold) 55%,
+    var(--ink-faint) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+  .working {
+    animation: none;
+    color: var(--ink-soft);
+  }
 }
