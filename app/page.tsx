@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import ScheduleCard from "@/components/ScheduleCard";
+import { YEARS, type Profile } from "@/lib/profile";
 import type { Constraints, Schedule } from "@/lib/types";
 
 type Result = {
@@ -52,6 +53,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<Live | null>(null);
   const [checking, setChecking] = useState(false);
+  const [profile, setProfile] = useState<Profile>({});
 
   /** Re-read enrolment for the courses on screen; the snapshot goes stale fast. */
   async function checkSeats(r: Result) {
@@ -86,7 +88,7 @@ export default function Home() {
       const res = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, profile }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
@@ -146,7 +148,63 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap items-end gap-x-5 gap-y-3 border-t border-rule pt-4">
+          <div>
+            <label htmlFor="year" className="label block">
+              Class year
+            </label>
+            <select
+              id="year"
+              value={profile.year ?? ""}
+              onChange={(e) =>
+                setProfile((p) => ({ ...p, year: e.target.value || undefined }))
+              }
+              className="mono mt-1 border-b border-rule bg-transparent py-1 text-[0.82rem] outline-none focus:border-blue"
+            >
+              <option value="">any</option>
+              {YEARS.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="min-w-40 flex-1">
+            <label htmlFor="major" className="label block">
+              Major
+            </label>
+            <input
+              id="major"
+              value={profile.major ?? ""}
+              onChange={(e) =>
+                setProfile((p) => ({ ...p, major: e.target.value || undefined }))
+              }
+              placeholder="Neuroscience"
+              className="mono mt-1 w-full border-b border-rule bg-transparent py-1 text-[0.82rem] outline-none placeholder:text-ink-faint focus:border-blue"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="credits" className="label block">
+              Credits {profile.credits ?? "—"}
+            </label>
+            <input
+              id="credits"
+              type="range"
+              min={9}
+              max={20}
+              step={1}
+              value={profile.credits ?? 15}
+              onChange={(e) =>
+                setProfile((p) => ({ ...p, credits: Number(e.target.value) }))
+              }
+              className="mt-2 w-36 accent-[var(--blue)]"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
           {EXAMPLES.map((ex) => (
             <button
               key={ex}
