@@ -80,14 +80,56 @@ you cannot see the student's transcript, so never assert they lack them.`;
 
 type Provider = "anthropic" | "xai" | "none";
 
+/**
+ * Grok is the default. LLM_PROVIDER forces a specific backend; otherwise
+ * whichever key is present wins, Grok first.
+ */
 function provider(): Provider {
-  // Flip to Grok for the demo by setting LLM_PROVIDER=xai.
-  if (process.env.LLM_PROVIDER === "xai") return process.env.XAI_API_KEY ? "xai" : "none";
-  return process.env.ANTHROPIC_API_KEY ? "anthropic" : "none";
+  const forced = process.env.LLM_PROVIDER;
+  if (forced === "xai") return process.env.XAI_API_KEY ? "xai" : "none";
+  if (forced === "anthropic") return process.env.ANTHROPIC_API_KEY ? "anthropic" : "none";
+  if (process.env.XAI_API_KEY) return "xai";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  return "none";
+}
+
+/** Which backend actually answered, for display. */
+export function activeProvider(): { name: string; model: string } {
+  switch (provider()) {
+    case "xai":
+      return { name: "Grok", model: process.env.XAI_MODEL ?? DEFAULT_GROK };
+    case "anthropic":
+      return { name: "Claude", model: process.env.ANTHROPIC_MODEL ?? "claude-opus-5" };
+    default:
+      return { name: "rule-based fallback", model: "no API key configured" };
+  }
 }
 
 /** True when no provider is configured and the app is running keyless. */
 export const usingFallback = () => provider() === "none";
+
+const DEFAULT_GROK = "grok-4.6";
+
+/**
+ * xAI strict mode requires every object to close additionalProperties and to
+ * list all of its properties as required. zod's emitter does neither
+ * reliably, and a schema that misses them is rejected at request time.
+ */
+function strictify(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(strictify);
+  if (!node || typeof node !== "object") return node;
+
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (k === "$schema") continue;
+    out[k] = strictify(v);
+  }
+  if (out.type === "object" && out.properties) {
+    out.additionalProperties = false;
+    out.required = Object.keys(out.properties as Record<string, unknown>);
+  }
+  return out;
+}
 
 /** Grok is OpenAI-compatible, so it gets raw HTTP rather than the Anthropic SDK. */
 async function xai(system: string, user: string, schema: object): Promise<unknown> {
@@ -98,7 +140,7 @@ async function xai(system: string, user: string, schema: object): Promise<unknow
       Authorization: `Bearer ${process.env.XAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: process.env.XAI_MODEL ?? "grok-4",
+      model: process.env.XAI_MODEL ?? DEFAULT_GROK,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -120,7 +162,7 @@ async function ask<T extends z.ZodType>(
   schema: T,
 ): Promise<z.infer<T>> {
   if (provider() === "xai") {
-    const raw = await xai(system, user, z.toJSONSchema(schema));
+    const raw = await xai(system, user, strictify(z.toJSONSchema(schema)) as object);
     return schema.parse(raw);
   }
   const client = new Anthropic();
@@ -148,13 +190,17 @@ function compact(raw: z.infer<typeof ConstraintsSchema>): Constraints {
 }
 
 export async function parseConstraints(prompt: string): Promise<Constraints> {
-  if (provider() === "none") return heuristicConstraints(prompt);
+  if (provider() === "none")
+    return heuristicConstraints(prompt, "Parsed by rules -- no API key configured.");
   try {
     return compact(await ask(CONSTRAINT_SYSTEM, prompt, ConstraintsSchema));
   } catch (e) {
     // Never let a provider outage end the demo -- degrade to the rule parser.
     console.error("constraint parse failed, falling back:", e);
-    return heuristicConstraints(prompt);
+    return heuristicConstraints(
+      prompt,
+      `Parsed by rules -- ${activeProvider().name} was unreachable.`,
+    );
   }
 }
 

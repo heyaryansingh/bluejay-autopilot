@@ -10,6 +10,7 @@ type Result = {
   semester: { name: string; year: string };
   lastUpdated: string;
   poolSize: number;
+  provider: { name: string; model: string };
   schedules: Schedule[];
 };
 
@@ -291,8 +292,10 @@ export default function Home() {
           )}
 
           <footer className="mono mt-12 border-t border-rule pt-4 text-[0.68rem] leading-relaxed text-ink-faint">
-            {result.semester.name} {result.semester.year} · {result.poolSize}{" "}
-            schedulable Homewood courses · catalog last updated{" "}
+            reasoned by {result.provider.name} ({result.provider.model}) ·
+            scheduling solved locally · {result.semester.name}{" "}
+            {result.semester.year} · {result.poolSize} schedulable Homewood
+            courses · catalog last updated{" "}
             {result.lastUpdated} · course data from the public jhu.semester.ly
             API · evaluation scores are historical and may predate the listed
             instructor

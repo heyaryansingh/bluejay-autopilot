@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { judge, parseConstraints } from "@/lib/llm";
+import { activeProvider, judge, parseConstraints } from "@/lib/llm";
 import { hasConflict, solve } from "@/lib/solver";
 import { applyProfile, profileSentence, type Profile } from "@/lib/profile";
 import { getCatalog } from "@/lib/store";
@@ -53,6 +53,7 @@ ${prompt}` : prompt),
     semester: meta.semester,
     lastUpdated: meta.last_updated,
     poolSize: courses.length,
+    provider: activeProvider(),
     schedules: judged,
   });
 }

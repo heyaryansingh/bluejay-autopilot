@@ -40,7 +40,7 @@ function clock(hour: string, minute: string | undefined, ap: string | undefined)
   return h * 60 + Number(minute ?? 0);
 }
 
-export function heuristicConstraints(text: string): Constraints {
+export function heuristicConstraints(text: string, reason?: string): Constraints {
   const c: Constraints = {};
   const t = text.toLowerCase();
 
@@ -93,7 +93,7 @@ export function heuristicConstraints(text: string): Constraints {
   const kw = TOPIC_WORDS.filter((w) => t.includes(w));
   if (kw.length) c.keywords = kw;
 
-  c.notes = "Parsed without a model (no API key configured).";
+  c.notes = reason ?? "Parsed without a model.";
   return c;
 }
 

@@ -1,114 +1,128 @@
 # Blue Jay Autopilot
 
-One sentence in. Three real, conflict-free JHU schedules out.
+**Describe your semester in one sentence. Get three real, conflict-free JHU schedules.**
 
 > *"15 credits, no 8ams, kills my Nat Sci req, professors people actually like"*
 
-Built for the Grok hackathon at Johns Hopkins.
+Built on **Grok** for the Grok hackathon at Johns Hopkins.
 
-## How it works
+---
 
-The interesting decision is what the model is **not** allowed to do.
+## The idea
+
+Course registration at Hopkins means opening SIS, guessing at course numbers,
+cross-referencing evaluations you can't easily search, and manually checking
+that nothing collides on Tuesday. This collapses that into one sentence.
+
+## The architecture decision that matters
+
+Grok is deliberately **not allowed to build the schedule.**
 
 ```
 your sentence
-   └─> model  ─────────> Constraints  (credits, times, free days, areas, rating floor)
+   └─> Grok ───────────> Constraints   (credits, times, free days, areas, rating floor)
                               │
    catalog + evaluations ─────┤
                               ▼
                           solver  ──> conflict-free schedules   [plain TypeScript]
                               │
                               ▼
-                           model  ──> the honest verdict on each
+                            Grok ──> the honest verdict on each
 ```
 
-A language model asked to "build me a schedule" will cheerfully hand you two
-classes that meet at the same time on Tuesday. So it never places a course.
-It reads your sentence into constraints, and later it writes the verdict — the
-actual scheduling is a randomised-restart search in `lib/solver.ts` where
-every returned schedule is conflict-free *by construction*. The API route
-re-verifies with `hasConflict()` before responding and fails loudly rather
-than shipping an overlap.
+Ask any LLM to "build me a 15-credit schedule" and it will hand you two
+classes that meet at 1:30pm on Tuesday. It reads beautifully and it is wrong.
 
-## Data
+So the model does the two things it is genuinely better at than code —
+understanding a messy human sentence, and writing a judgement about a
+tradeoff — and the combinatorial search stays in `lib/solver.ts`, where a
+randomised-restart search produces schedules that are conflict-free *by
+construction*. The API route independently re-verifies with `hasConflict()`
+and returns a 500 rather than ever shipping an overlap.
 
-Everything comes from the **public, unauthenticated** `jhu.semester.ly` API —
-no SIS key required (SIS itself is key-gated and rejects anonymous requests).
+That split is the whole design. It's why the output is trustworthy.
 
-| Source | What it gives |
+## What it actually knows
+
+| Signal | Source |
 |---|---|
-| `POST /search/{term}/{year}/` | full course records, filterable by department/area/level |
-| `GET /courses/{term}/{year}/id/{id}` | one course, used for live seat checks |
-| `GET /school/jhu` | department, area, and level vocabularies |
+| Meeting times, rooms, days | live JHU catalog |
+| Seats taken vs. cap, waitlist | live, re-checkable on demand |
+| **Real course evaluation scores** | JHU evaluations, per course and instructor |
+| **Student reaction counts** | FIRE / LOVE / INTERESTING / HARD / BORING / CRAP |
+| Distribution areas (H N S Q E) and named foci | catalog |
+| Prerequisites | pre-extracted prereq graph |
+| Credits, level, department | catalog |
 
-Per course that yields: meeting times and rooms, section enrolment vs. cap,
-instructors, credits, distribution areas, **real JHU course-evaluation
-scores**, student reaction counts (FIRE / HARD / BORING / CRAP), and a
-pre-extracted prerequisite graph.
+All of it from the **public, unauthenticated** `jhu.semester.ly` API. No SIS
+key required — SIS itself is key-gated and rejects anonymous requests.
 
-Two upstream quirks the parser has to handle, both of which silently produce
-wrong output if you miss them:
-
-1. `areas` arrives **char-exploded and space-stripped** — `"EQ, Science and
-   Data"` comes back as `["E","Q",",","S","c","i",...]`. It is a comma-joined
-   mix of distribution codes (1–3 uppercase letters) and *named foci*. Split on
-   the first comma and "EthicsandFoundations" becomes the letters E,T,H,I,C,S,
-   which reports Psychology as an Engineering course.
-2. The department vocabulary carries **two naming shapes** — 57 `"AS "`/`"EN "`
-   prefixed entries that are a near-empty legacy shape, and 440 unprefixed ones
-   holding the real courses. Filtering on the prefixed names returns junk.
-
-## Running it
+## Quick start
 
 ```bash
 npm install
-npm run crawl      # writes data/catalog.json (~10 min, all 497 departments)
+cp .env.example .env.local     # add your XAI_API_KEY
 npm run dev
 ```
 
-Create `.env.local`:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-Then open http://localhost:3000.
-
-### Switching to Grok
-
-```
-LLM_PROVIDER=xai
-XAI_API_KEY=xai-...
-XAI_MODEL=grok-4
-```
-
-Nothing else changes — `lib/llm.ts` swaps the transport and keeps the same
-schemas.
-
-### No key at all
-
-It still works. `lib/heuristic.ts` is a rule-based constraint parser used
-automatically when no provider is configured, and as a fallback if the API
-rate-limits mid-demo. Constraint quality drops; the solver does not.
-
-## Checks
+Open http://localhost:3000. The repo ships with a catalog snapshot, so it
+runs immediately — no crawl needed.
 
 ```bash
-npm run check
+npm run crawl    # optional: refresh the snapshot (~10 min, 497 departments)
+npm run check    # self-checks, including conflict-freedom on real data
 ```
 
-Unit tests for the time/area parsing, then integration tests against the real
-crawled catalog asserting that solved schedules have zero conflicts, honour
-free days and time windows, hit the credit target, cover required distribution
-areas, and return nothing at all rather than something invalid when the
-constraints are impossible.
+### Configuration
 
-## Caveats
+| Variable | Default | Notes |
+|---|---|---|
+| `XAI_API_KEY` | — | Grok. The default provider. |
+| `XAI_MODEL` | `grok-4.6` | |
+| `ANTHROPIC_API_KEY` | — | Optional fallback provider. |
+| `LLM_PROVIDER` | auto | Force `xai` or `anthropic`. |
+
+**With no key at all it still works.** `lib/heuristic.ts` is a rule-based
+constraint parser that takes over automatically, so a rate limit mid-demo
+degrades the output instead of ending it. The solver is unaffected either way.
+
+## Two upstream traps
+
+Both produce confidently wrong output rather than an error, so they're worth
+naming:
+
+1. **`areas` arrives char-exploded and space-stripped.** `"EQ, Science and
+   Data"` comes back as `["E","Q",",","S","c","i",...]`. Rejoined, it's a
+   comma-separated mix of distribution codes (1–3 uppercase letters) *and*
+   named foci. Split on the first comma and `"EthicsandFoundations"` becomes
+   the letters E,T,H,I,C,S — which reports Psychology as an Engineering
+   course.
+2. **The department vocabulary has two naming shapes.** 57 `"AS "`/`"EN "`
+   prefixed entries are a near-empty legacy shape; the 440 unprefixed ones
+   hold the real courses. Filtering on the prefixed names returns junk and
+   silently misses most of the catalog.
+
+## Verification
+
+`npm run check` runs unit tests on the time and area parsing, then asserts
+against the **real crawled catalog** that solved schedules have zero
+conflicts, honour free days and time windows, hit the credit target, cover
+required distribution areas, and return *nothing at all* rather than
+something invalid when constraints are impossible.
+
+## Honest limits
 
 - Evaluation scores are historical and may predate the currently listed
-  instructor. The UI says so in the footer.
-- Prerequisites are surfaced but **not enforced** — the API exposes a
+  instructor. The UI states this in the footer.
+- Prerequisites are **surfaced, not enforced** — the API exposes a
   regex-extracted prereq list, not your transcript.
 - Homewood undergrad only (`AS.` / `EN.` course codes).
 - Courses with no fixed meeting time (most online and Engineering for
   Professionals sections) can't be placed on a weekly grid and are excluded.
+- Class year maps to plausible course levels as a heuristic, not a
+  degree-audit rule.
+
+## License
+
+The `jhu.semester.ly` project is GPL-3.0. This is an independent client of
+its public HTTP API and contains none of its source.
